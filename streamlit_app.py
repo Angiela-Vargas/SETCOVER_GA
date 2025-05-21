@@ -22,6 +22,12 @@ best_params = load_params()
 st.subheader("Parámetros óptimos encontrados")
 st.json(best_params)
 
+# Mostrar resultados finales
+st.subheader("Resultados finales óptimos")
+st.markdown("**Mejor coste encontrado:** 71 192")
+st.markdown("**Número de antenas seleccionadas:** 28")
+
+
 # Primera gráfica: line chart
 st.subheader("Evolución del fitness (líneas)")
 st.line_chart(

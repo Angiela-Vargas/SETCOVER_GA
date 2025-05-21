@@ -4,15 +4,15 @@ import numpy as np
 from deap import base, creator, tools, algorithms
 import random
 
-# --- 1) Función Python que corre el GA (DEAP) y devuelve un DataFrame con stats ---
+# --- GA con devolución explícita del mejor individuo y stats ---
 def run_ga_python(pop_size, max_gen, cx_frac, mut_rate):
-    # Carga de datos
+    # 1) Carga de datos (hazlo fuera si quieres optimizar)
     cov   = np.loadtxt('set_cover_500x500.csv', delimiter=',')
     costs = pd.read_excel('Costo_S.xlsx', header=None).iloc[1,1:501].values
 
-    # DEAP setup
+    # 2) Setup DEAP
     creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-    creator.create("Individual", list,  fitness=creator.FitnessMin)
+    creator.create("Individual", list, fitness=creator.FitnessMin)
     toolbox = base.Toolbox()
     toolbox.register("attr_bool", random.randint, 0, 1)
     toolbox.register("individual", tools.initRepeat, creator.Individual,
@@ -29,55 +29,56 @@ def run_ga_python(pop_size, max_gen, cx_frac, mut_rate):
     toolbox.register("mutate",  tools.mutFlipBit, indpb=mut_rate)
     toolbox.register("select",  tools.selTournament, tournsize=3)
 
-    # Estadísticas
+    # 3) Estadísticas y HallOfFame
     stats = tools.Statistics(lambda ind: ind.fitness.values[0])
     stats.register("avg", np.mean)
     stats.register("min", np.min)
+    hof = tools.HallOfFame(1)
 
+    # 4) Ejecuta el GA
     pop = toolbox.population(n=pop_size)
-    log = tools.Logbook()
-
-    # Ejecutar GA
     pop, log = algorithms.eaSimple(pop, toolbox,
                                    cxpb=cx_frac, mutpb=mut_rate,
                                    ngen=max_gen, stats=stats,
-                                   verbose=False)
+                                   halloffame=hof, verbose=False)
 
-    # Construir DataFrame
+    # 5) Extraer mejor individuo y su coste
+    best_ind = np.array(hof[0])
+    best_cost = costs.dot(best_ind)
+    num_antennas = int(best_ind.sum())
+
+    # 6) Construir DataFrame de stats
     df = pd.DataFrame({
         'Generation': log.select("gen"),
         'BestFitness': log.select("min"),
         'MeanFitness': log.select("avg"),
     })
-    return df
 
-# --- 2) Streamlit app ---
+    return df, best_cost, num_antennas
+
+# --- Streamlit app ---
 st.title("Interfaz Interactiva del GA para Set Covering")
 
-# --- 3) Sidebar: sliders para hiperparámetros ---
-st.sidebar.header("Ajuste de parámetros del GA")
+# SideBar de parámetros
+st.sidebar.header("Ajuste de parámetros")
 pop_size = st.sidebar.slider("Population size",  50, 200, 100, step=10)
 max_gen  = st.sidebar.slider("Max generations", 50, 300, 100, step=10)
-cx_frac  = st.sidebar.slider("Crossover frac.", 0.5, 0.9, 0.7, step=0.05)
+cx_frac  = st.sidebar.slider("Crossover fraction", 0.5, 0.9, 0.7, step=0.05)
 mut_rate = st.sidebar.slider("Mutation rate",  0.005, 0.05, 0.01, step=0.005)
 
 if st.sidebar.button("Ejecutar GA"):
-    with st.spinner("Corriendo GA, espera unos segundos..."):
-        df_stats = run_ga_python(pop_size, max_gen, cx_frac, mut_rate)
+    with st.spinner("Corriendo GA..."):
+        df_stats, best_cost, num_ant = run_ga_python(pop_size, max_gen, cx_frac, mut_rate)
 
-    # --- 4) Mostrar resultados ---
     st.subheader("Evolución del fitness")
     st.line_chart(df_stats.set_index('Generation'))
 
-    st.subheader("Estadísticas por generación")
+    st.subheader("Resultados finales")
+    st.markdown(f"- **Mejor coste:** {best_cost:.0f}")
+    st.markdown(f"- **Antenas seleccionadas:** {num_ant}")
+
+    st.subheader("Tabla de estadísticas")
     st.dataframe(df_stats)
 
-    # Datos finales
-    best_cost = int(df_stats['BestFitness'].iloc[-1])
-    st.markdown(f"**Mejor coste final:** {best_cost}")
-    # Antenas seleccionadas aproximadas (asumiendo fitness sin penalización)
-    st.markdown(f"**Antenas seleccionadas aprox.:** "
-                f"{int(best_cost/np.mean(pd.read_excel('Costo_S.xlsx', header=None).iloc[1,1:]))}")
-
 else:
-    st.info("Ajusta los parámetros en la barra lateral y pulsa **Ejecutar GA**.")
+    st.info("Ajusta los parámetros y pulsa **Ejecutar GA**.")
